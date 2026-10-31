@@ -41,7 +41,7 @@ tr.yr td{background:var(--bg);color:var(--bordeaux);font-weight:bold;font-size:1
 .nm{font-weight:bold}
 .tag{display:inline-block;font-size:12px;border-radius:20px;padding:2px 9px;background:var(--bg);color:var(--bordeaux);margin-right:4px}
 .mem{display:block;font-size:12px;color:var(--muted)}
-.place{font-weight:bold;white-space:nowrap}
+.place{font-weight:bold;min-width:90px}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:20px}
 .pc{text-align:center;cursor:pointer;transition:transform .15s}
 .pc:hover{transform:translateY(-3px)}
@@ -156,15 +156,20 @@ tfoot td{font-weight:bold;background:var(--bg)}
     </div>
 
     <div class="row2">
-      <div class="fg"><label for="mDate">Date</label><input type="date" id="mDate" required></div>
-      <div class="fg"><label for="mPlace">Place obtenue</label><input type="number" id="mPlace" min="1" inputmode="numeric" placeholder="1 = or, 2 = argent…" required></div>
+      <div class="fg"><label for="mDate">Date (facultatif)</label><input type="date" id="mDate"></div>
+      <div class="fg"><label for="mPlace">Place (facultatif)</label><input type="number" id="mPlace" min="1" inputmode="numeric" placeholder="1 = or, 2 = argent…"></div>
     </div>
 
-    <div class="fg"><label for="mComp">Titre de la compétition</label><input id="mComp" required placeholder="ex. Championnats de France Maîtres d'Armes"></div>
+    <div class="fg"><label for="mComp">Titre de la compétition (facultatif)</label><input id="mComp" placeholder="ex. Championnats de France Maîtres d'Armes"></div>
 
     <div class="row2">
-      <div class="fg"><label for="mLieu">Lieu</label><input id="mLieu" required placeholder="ex. Toulouse"></div>
+      <div class="fg"><label for="mLieu">Lieu (facultatif)</label><input id="mLieu" placeholder="ex. Toulouse"></div>
       <div class="fg"><label for="mNiveau">Niveau</label><select id="mNiveau"></select></div>
+    </div>
+
+    <div class="row2">
+      <div class="fg"><label for="mRes">Résultat en texte (facultatif)</label><input id="mRes" placeholder="ex. Top 20, qualifiée…"></div>
+      <div class="fg"><label for="mSaison">Saison (si date inconnue)</label><input id="mSaison" placeholder="ex. 2024/2025"></div>
     </div>
 
     <div class="fg"><label for="mCat">Catégorie (facultatif)</label><input id="mCat" placeholder="ex. M13, M17, Senior, V1…"></div>
@@ -206,6 +211,7 @@ const S = {
 const $ = id => document.getElementById(id);
 
 /* ---------- utilitaires ---------- */
+const yearOf = r => r.date ? r.date.slice(0, 4) : (r.saison || 'Date inconnue');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
 const kOf = r => r.type + '|' + norm(r.nom);
@@ -220,6 +226,10 @@ function placeLabel(p) {
   if (p === 2) return '🥈 2e';
   if (p === 3) return '🥉 3e';
   return p + 'e';
+}
+function resLabel(r) {
+  const p = Number(r.place), base = p > 0 ? placeLabel(p) : '', t = r.resultat ? esc(r.resultat) : '';
+  return base && t ? base + ' · ' + t : (base || t || '–');
 }
 function photoFor(key) {
   const rows = S.data.filter(r => kOf(r) === key && r.photo).sort((a, b) => b.date.localeCompare(a.date));
@@ -244,7 +254,7 @@ async function fb(method, path = '', body) {
 async function load() {
   try {
     const o = (await fb('GET')) || {};
-    S.data = Object.entries(o).map(([id, v]) => ({ ...v, id }));
+    S.data = Object.entries(o).map(([id, v]) => ({ date: '', lieu: '', competition: '', place: '', resultat: '', saison: '', sexe: '', categorie: '', membres: '', photo: '', ...v, id }));
   } catch (e) {
     $('view').innerHTML = '<div class="empty">⚠️ Impossible de charger les résultats. Vérifiez la connexion puis rechargez la page.</div>';
     return;
@@ -255,7 +265,7 @@ async function load() {
 
 /* ---------- filtres ---------- */
 function buildFilters() {
-  const years = [...new Set(S.data.map(r => r.date.slice(0, 4)))].sort().reverse();
+  const years = [...new Set(S.data.map(yearOf))].sort().reverse();
   const subjects = new Map();
   S.data.forEach(r => { const k = kOf(r); if (!subjects.has(k)) subjects.set(k, r); });
   const subj = [...subjects.entries()].sort((a, b) => a[1].nom.localeCompare(b[1].nom, 'fr'));
@@ -264,7 +274,7 @@ function buildFilters() {
     $(id).value = opts.some(o => o[0] === cur) ? cur : '';
   };
   fill('fArme', 'Toutes les armes', ARMES.map(a => [a, a]), S.f.arme);
-  fill('fAnnee', 'Toutes les années (cumul)', years.map(y => [y, y]), S.f.annee);
+  fill('fAnnee', 'Toutes les années / saisons (cumul)', years.map(y => [y, y]), S.f.annee);
   fill('fNiveau', 'Tous les niveaux', NIVEAUX.map(n => [n, n]), S.f.niveau);
   fill('fSujet', 'Tous', subj.map(([k, r]) => [k, r.nom + (r.type === 'equipe' ? ' (équipe)' : '')]), S.f.sujet);
   S.f.arme = $('fArme').value; S.f.annee = $('fAnnee').value; S.f.niveau = $('fNiveau').value; S.f.sujet = $('fSujet').value;
@@ -273,13 +283,13 @@ function buildFilters() {
 function filtered() {
   return S.data.filter(r =>
     (!S.f.arme || r.arme === S.f.arme) &&
-    (!S.f.annee || r.date.slice(0, 4) === S.f.annee) &&
+    (!S.f.annee || yearOf(r) === S.f.annee) &&
     (!S.f.niveau || r.niveau === S.f.niveau) &&
     (!S.f.sujet || kOf(r) === S.f.sujet));
 }
 function sorted(rows) {
   const { key, dir } = S.sort;
-  const val = r => key === 'niveau' ? NIVEAUX.indexOf(r.niveau) : key === 'place' ? Number(r.place) : String(r[key] || '');
+  const val = r => key === 'niveau' ? NIVEAUX.indexOf(r.niveau) : key === 'place' ? (Number(r.place) || 999) : String(r[key] || '');
   return rows.slice().sort((a, b) => {
     const x = val(a), y = val(b);
     let c = typeof x === 'number' ? x - y : x.localeCompare(y, 'fr');
@@ -316,11 +326,11 @@ function viewDetail(rows) {
   rows = sorted(rows);
   const cols = S.edit ? 8 : 7;
   const th = (k, l) => `<th class="s" data-sort="${k}">${l}${S.sort.key === k ? (S.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
-  let h = `<div class="card"><table class="stack"><thead><tr><th></th>${th('date', 'Date')}${th('nom', 'Tireur / équipe')}${th('arme', 'Arme')}<th>Compétition</th><th>Lieu</th>${th('niveau', 'Niveau')}${th('place', 'Place')}${S.edit ? '<th></th>' : ''}</tr></thead><tbody>`;
+  let h = `<div class="card"><table class="stack"><thead><tr><th></th>${th('date', 'Date')}${th('nom', 'Tireur / équipe')}${th('arme', 'Arme')}<th>Compétition</th><th>Lieu</th>${th('niveau', 'Niveau')}${th('place', 'Résultat')}${S.edit ? '<th></th>' : ''}</tr></thead><tbody>`;
   let ly = null;
   rows.forEach(r => {
     if (S.sort.key === 'date' && !S.f.annee) {
-      const y = r.date.slice(0, 4);
+      const y = yearOf(r);
       if (y !== ly) { h += `<tr class="yr"><td colspan="${cols + 1}">${y}</td></tr>`; ly = y; }
     }
     h += `<tr>
@@ -333,7 +343,7 @@ function viewDetail(rows) {
       <td data-label="Compétition">${esc(r.competition)}</td>
       <td data-label="Lieu">${esc(r.lieu)}</td>
       <td data-label="Niveau">${esc(r.niveau)}</td>
-      <td data-label="Place" class="place">${placeLabel(r.place)}</td>
+      <td data-label="Place" class="place">${resLabel(r)}</td>
       ${S.edit ? `<td data-label=""><button class="btn ghost small" data-act="edit" data-id="${r.id}">✏️</button> <button class="btn ghost small" data-act="del" data-id="${r.id}">🗑️</button></td>` : ''}
     </tr>`;
   });
@@ -353,7 +363,7 @@ function viewTireurs(rows) {
     const img = p ? `<img class="big" style="display:block" src="${esc(thumb(p, 220, 220))}" alt="${esc(r.nom)}" loading="lazy">` : `<div class="big">${esc(initials(r.nom))}</div>`;
     return `<div class="card pc" data-act="focus" data-key="${esc(x.k)}">
       ${img}<h3>${esc(r.nom)}</h3>
-      <div><span class="tag">${r.type === 'equipe' ? 'Équipe' : 'Individuel'}</span><span class="tag">${esc(r.sexe)}</span></div>
+      <div><span class="tag">${r.type === 'equipe' ? 'Équipe' : 'Individuel'}</span>${r.sexe ? `<span class="tag">${esc(r.sexe)}</span>` : ''}</div>
       <div class="med">🥇 ${x.m.g} &nbsp; 🥈 ${x.m.s} &nbsp; 🥉 ${x.m.b}</div>
       <div class="small">${x.rs.length} résultat${x.rs.length > 1 ? 's' : ''} · meilleur niveau : ${NIVEAUX[x.best]}</div>
       <div class="small">Dernier : ${fmtDate(r.date)} – ${esc(r.competition)}</div>
@@ -364,11 +374,11 @@ function viewTireurs(rows) {
 function viewClub(rows) {
   let h = '<div class="card"><table><thead><tr><th>Niveau</th><th>Sexe</th><th class="num">Résultats</th><th class="num">🥇</th><th class="num">🥈</th><th class="num">🥉</th><th class="num">Médailles</th></tr></thead><tbody>';
   NIVEAUX.slice().reverse().forEach(n => {
-    SEXES.forEach(s => {
+    [...SEXES, ''].forEach(s => {
       const rs = rows.filter(r => r.niveau === n && r.sexe === s);
       if (!rs.length) return;
       const m = medals(rs);
-      h += `<tr><td>${n}</td><td>${SEXE_PL[s]}</td><td class="num">${rs.length}</td><td class="num">${m.g}</td><td class="num">${m.s}</td><td class="num">${m.b}</td><td class="num"><b>${m.g + m.s + m.b}</b></td></tr>`;
+      h += `<tr><td>${n}</td><td>${SEXE_PL[s] || 'Non précisé'}</td><td class="num">${rs.length}</td><td class="num">${m.g}</td><td class="num">${m.s}</td><td class="num">${m.b}</td><td class="num"><b>${m.g + m.s + m.b}</b></td></tr>`;
     });
   });
   const t = medals(rows);
@@ -383,8 +393,8 @@ function setType(t) {
   $('gMembres').hidden = t !== 'equipe';
   const sel = $('mSexe'), cur = sel.value;
   const opts = t === 'equipe' ? SEXES : ['Femme', 'Homme'];
-  sel.innerHTML = opts.map(s => `<option value="${s}">${t === 'equipe' ? SEXE_PL[s] : s}</option>`).join('');
-  if (opts.includes(cur)) sel.value = cur;
+  sel.innerHTML = opts.map(s => `<option value="${s}">${t === 'equipe' ? SEXE_PL[s] : s}</option>`).join('') + '<option value="">Non précisé</option>';
+  if (opts.includes(cur) || cur === '') sel.value = cur;
 }
 function setPhoto(u) {
   S.photo = u || '';
@@ -404,7 +414,9 @@ function openForm(id) {
   $('mArme').value = r ? r.arme : ARMES[0];
   $('mNiveau').value = r ? r.niveau : NIVEAUX[0];
   $('mDate').value = r ? r.date : new Date().toISOString().slice(0, 10);
-  $('mPlace').value = r ? r.place : '';
+  $('mPlace').value = r ? (r.place ?? '') : '';
+  $('mRes').value = r ? (r.resultat || '') : '';
+  $('mSaison').value = r ? (r.saison || '') : '';
   $('mComp').value = r ? r.competition : '';
   $('mLieu').value = r ? r.lieu : '';
   $('mCat').value = r ? (r.categorie || '') : '';
@@ -493,7 +505,8 @@ $('form').addEventListener('submit', async e => {
   const r = {
     type, nom: $('mNom').value.trim(), sexe: $('mSexe').value, arme: $('mArme').value,
     date: $('mDate').value, lieu: $('mLieu').value.trim(), competition: $('mComp').value.trim(),
-    niveau: $('mNiveau').value, place: parseInt($('mPlace').value, 10),
+    niveau: $('mNiveau').value, place: parseInt($('mPlace').value, 10) || '',
+    resultat: $('mRes').value.trim(), saison: $('mSaison').value.trim(),
     categorie: $('mCat').value.trim(), membres: type === 'equipe' ? $('mMembres').value.trim() : '',
     photo: S.photo
   };
