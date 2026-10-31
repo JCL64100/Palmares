@@ -102,6 +102,7 @@ tfoot td{font-weight:bold;background:var(--bg)}
     <div><label for="fArme">Arme</label><select id="fArme"></select></div>
     <div><label for="fAnnee">Saison</label><select id="fAnnee"></select></div>
     <div><label for="fNiveau">Niveau</label><select id="fNiveau"></select></div>
+    <div><label for="fType">Type</label><select id="fType"></select></div>
     <div><label for="fSujet">Tireur / équipe</label><select id="fSujet"></select></div>
     <div><label for="fTri">Trier par</label>
       <select id="fTri">
@@ -205,7 +206,7 @@ const SEXE_PL = { Femme: 'Femmes', Homme: 'Hommes', Mixte: 'Mixte' };
 
 const S = {
   data: [], tab: 'detail', edit: false, editId: null, photo: '',
-  f: { arme: '', annee: '', niveau: '', sujet: '' },
+  f: { arme: '', annee: '', niveau: '', type: '', sujet: '' },
   sort: { key: 'date', dir: -1 }
 };
 const $ = id => document.getElementById(id);
@@ -281,8 +282,9 @@ function buildFilters() {
   fill('fArme', 'Toutes les armes', ARMES.map(a => [a, a]), S.f.arme);
   fill('fAnnee', 'Toutes les saisons (cumul)', years.map(y => [y, y]), S.f.annee);
   fill('fNiveau', 'Tous les niveaux', NIVEAUX.map(n => [n, n]), S.f.niveau);
+  fill('fType', 'Individuels et équipes', [['individuel', 'Individuel'], ['equipe', 'Équipe']], S.f.type);
   fill('fSujet', 'Tous', subj.map(([k, r]) => [k, r.nom + (r.type === 'equipe' ? ' (équipe)' : '')]), S.f.sujet);
-  S.f.arme = $('fArme').value; S.f.annee = $('fAnnee').value; S.f.niveau = $('fNiveau').value; S.f.sujet = $('fSujet').value;
+  S.f.arme = $('fArme').value; S.f.annee = $('fAnnee').value; S.f.niveau = $('fNiveau').value; S.f.type = $('fType').value; S.f.sujet = $('fSujet').value;
   $('dlSaisons').innerHTML = years.filter(y => /^\d{4}\/\d{4}$/.test(y)).map(y => `<option value="${esc(y)}">`).join('');
   $('dlNoms').innerHTML = subj.map(([k, r]) => `<option value="${esc(r.nom)}">`).join('');
 }
@@ -291,6 +293,7 @@ function filtered() {
     (!S.f.arme || r.arme === S.f.arme) &&
     (!S.f.annee || seasonOf(r) === S.f.annee) &&
     (!S.f.niveau || r.niveau === S.f.niveau) &&
+    (!S.f.type || r.type === S.f.type) &&
     (!S.f.sujet || kOf(r) === S.f.sujet));
 }
 function sorted(rows) {
@@ -459,14 +462,14 @@ async function uploadPhoto(file) {
 }
 
 /* ---------- événements ---------- */
-['fArme', 'fAnnee', 'fNiveau', 'fSujet'].forEach(id => $(id).addEventListener('change', () => {
-  S.f = { arme: $('fArme').value, annee: $('fAnnee').value, niveau: $('fNiveau').value, sujet: $('fSujet').value };
+['fArme', 'fAnnee', 'fNiveau', 'fType', 'fSujet'].forEach(id => $(id).addEventListener('change', () => {
+  S.f = { arme: $('fArme').value, annee: $('fAnnee').value, niveau: $('fNiveau').value, type: $('fType').value, sujet: $('fSujet').value };
   render();
 }));
 $('fTri').addEventListener('change', e => { const [k, d] = e.target.value.split(':'); S.sort = { key: k, dir: +d }; render(); });
 $('fReset').addEventListener('click', () => {
-  S.f = { arme: '', annee: '', niveau: '', sujet: '' };
-  ['fArme', 'fAnnee', 'fNiveau', 'fSujet'].forEach(id => $(id).value = '');
+  S.f = { arme: '', annee: '', niveau: '', type: '', sujet: '' };
+  ['fArme', 'fAnnee', 'fNiveau', 'fType', 'fSujet'].forEach(id => $(id).value = '');
   S.sort = { key: 'date', dir: -1 }; syncSort(); render();
 });
 document.querySelector('.tabs').addEventListener('click', e => {
