@@ -169,7 +169,7 @@ tfoot td{font-weight:bold;background:var(--bg)}
 
     <div class="row2">
       <div class="fg"><label for="mRes">Résultat en texte (facultatif)</label><input id="mRes" placeholder="ex. Top 20, qualifiée…"></div>
-      <div class="fg"><label for="mSaison">Saison (si date inconnue)</label><input id="mSaison" placeholder="ex. 2024/2025"></div>
+      <div class="fg"><label for="mSaison">Saison</label><input id="mSaison" list="dlSaisons" required pattern="\d{4}/\d{4}" title="Format : 2025/2026" placeholder="ex. 2025/2026"><datalist id="dlSaisons"></datalist></div>
     </div>
 
     <div class="fg"><label for="mCat">Catégorie (facultatif)</label><input id="mCat" placeholder="ex. M13, M17, Senior, V1…"></div>
@@ -211,11 +211,12 @@ const S = {
 const $ = id => document.getElementById(id);
 
 /* ---------- utilitaires ---------- */
-const seasonOf = r => {
-  if (!r.date) return r.saison || 'Saison inconnue';
-  const y = +r.date.slice(0, 4), m = +r.date.slice(5, 7);
-  return m >= 9 ? y + '/' + (y + 1) : (y - 1) + '/' + y;   // saison du 1er sept. au 31 août
+const seasonFromDate = d => {   // simple suggestion pour pré-remplir le champ (saison : 1er sept. → 31 août)
+  if (!d) return '';
+  const y = +d.slice(0, 4), m = +d.slice(5, 7);
+  return m >= 9 ? y + '/' + (y + 1) : (y - 1) + '/' + y;
 };
+const seasonOf = r => r.saison || seasonFromDate(r.date) || 'Saison inconnue';   // le champ Saison fait foi
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
 const kOf = r => r.type + '|' + norm(r.nom);
@@ -282,6 +283,7 @@ function buildFilters() {
   fill('fNiveau', 'Tous les niveaux', NIVEAUX.map(n => [n, n]), S.f.niveau);
   fill('fSujet', 'Tous', subj.map(([k, r]) => [k, r.nom + (r.type === 'equipe' ? ' (équipe)' : '')]), S.f.sujet);
   S.f.arme = $('fArme').value; S.f.annee = $('fAnnee').value; S.f.niveau = $('fNiveau').value; S.f.sujet = $('fSujet').value;
+  $('dlSaisons').innerHTML = years.filter(y => /^\d{4}\/\d{4}$/.test(y)).map(y => `<option value="${esc(y)}">`).join('');
   $('dlNoms').innerHTML = subj.map(([k, r]) => `<option value="${esc(r.nom)}">`).join('');
 }
 function filtered() {
@@ -420,7 +422,8 @@ function openForm(id) {
   $('mDate').value = r ? r.date : new Date().toISOString().slice(0, 10);
   $('mPlace').value = r ? (r.place ?? '') : '';
   $('mRes').value = r ? (r.resultat || '') : '';
-  $('mSaison').value = r ? (r.saison || '') : '';
+  $('mSaison').value = r ? (r.saison || seasonFromDate(r.date)) : seasonFromDate($('mDate').value);
+  S.autoS = r ? (r.date ? seasonFromDate(r.date) : '') : seasonFromDate($('mDate').value);
   $('mComp').value = r ? r.competition : '';
   $('mLieu').value = r ? r.lieu : '';
   $('mCat').value = r ? (r.categorie || '') : '';
@@ -493,6 +496,11 @@ $('btnEdit').addEventListener('click', () => {
   else toast('Code incorrect');
 });
 $('btnAdd').addEventListener('click', () => openForm());
+$('mDate').addEventListener('change', () => {
+  const d = $('mDate').value; if (!d) return;
+  const cur = $('mSaison').value;
+  if (!cur || cur === S.autoS) { S.autoS = seasonFromDate(d); $('mSaison').value = S.autoS; }
+});
 $('mCancel').addEventListener('click', () => $('modal').hidden = true);
 document.querySelectorAll('#segType input').forEach(i => i.addEventListener('change', () => setType(i.value)));
 $('mRmPhoto').addEventListener('click', () => { setPhoto(''); $('mFile').value = ''; });
