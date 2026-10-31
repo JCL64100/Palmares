@@ -100,7 +100,7 @@ tfoot td{font-weight:bold;background:var(--bg)}
 
   <section class="card filters">
     <div><label for="fArme">Arme</label><select id="fArme"></select></div>
-    <div><label for="fAnnee">Année</label><select id="fAnnee"></select></div>
+    <div><label for="fAnnee">Saison</label><select id="fAnnee"></select></div>
     <div><label for="fNiveau">Niveau</label><select id="fNiveau"></select></div>
     <div><label for="fSujet">Tireur / équipe</label><select id="fSujet"></select></div>
     <div><label for="fTri">Trier par</label>
@@ -211,7 +211,11 @@ const S = {
 const $ = id => document.getElementById(id);
 
 /* ---------- utilitaires ---------- */
-const yearOf = r => r.date ? r.date.slice(0, 4) : (r.saison || 'Date inconnue');
+const seasonOf = r => {
+  if (!r.date) return r.saison || 'Saison inconnue';
+  const y = +r.date.slice(0, 4), m = +r.date.slice(5, 7);
+  return m >= 9 ? y + '/' + (y + 1) : (y - 1) + '/' + y;   // saison du 1er sept. au 31 août
+};
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim().replace(/\s+/g, ' ');
 const kOf = r => r.type + '|' + norm(r.nom);
@@ -265,7 +269,7 @@ async function load() {
 
 /* ---------- filtres ---------- */
 function buildFilters() {
-  const years = [...new Set(S.data.map(yearOf))].sort().reverse();
+  const years = [...new Set(S.data.map(seasonOf))].sort().reverse();
   const subjects = new Map();
   S.data.forEach(r => { const k = kOf(r); if (!subjects.has(k)) subjects.set(k, r); });
   const subj = [...subjects.entries()].sort((a, b) => a[1].nom.localeCompare(b[1].nom, 'fr'));
@@ -274,7 +278,7 @@ function buildFilters() {
     $(id).value = opts.some(o => o[0] === cur) ? cur : '';
   };
   fill('fArme', 'Toutes les armes', ARMES.map(a => [a, a]), S.f.arme);
-  fill('fAnnee', 'Toutes les années / saisons (cumul)', years.map(y => [y, y]), S.f.annee);
+  fill('fAnnee', 'Toutes les saisons (cumul)', years.map(y => [y, y]), S.f.annee);
   fill('fNiveau', 'Tous les niveaux', NIVEAUX.map(n => [n, n]), S.f.niveau);
   fill('fSujet', 'Tous', subj.map(([k, r]) => [k, r.nom + (r.type === 'equipe' ? ' (équipe)' : '')]), S.f.sujet);
   S.f.arme = $('fArme').value; S.f.annee = $('fAnnee').value; S.f.niveau = $('fNiveau').value; S.f.sujet = $('fSujet').value;
@@ -283,7 +287,7 @@ function buildFilters() {
 function filtered() {
   return S.data.filter(r =>
     (!S.f.arme || r.arme === S.f.arme) &&
-    (!S.f.annee || yearOf(r) === S.f.annee) &&
+    (!S.f.annee || seasonOf(r) === S.f.annee) &&
     (!S.f.niveau || r.niveau === S.f.niveau) &&
     (!S.f.sujet || kOf(r) === S.f.sujet));
 }
@@ -330,7 +334,7 @@ function viewDetail(rows) {
   let ly = null;
   rows.forEach(r => {
     if (S.sort.key === 'date' && !S.f.annee) {
-      const y = yearOf(r);
+      const y = seasonOf(r);
       if (y !== ly) { h += `<tr class="yr"><td colspan="${cols + 1}">${y}</td></tr>`; ly = y; }
     }
     h += `<tr>
