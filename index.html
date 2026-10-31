@@ -330,9 +330,9 @@ function render() {
 
 function viewDetail(rows) {
   rows = sorted(rows);
-  const cols = S.edit ? 8 : 7;
+  const cols = S.edit ? 9 : 8;
   const th = (k, l) => `<th class="s" data-sort="${k}">${l}${S.sort.key === k ? (S.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
-  let h = `<div class="card"><table class="stack"><thead><tr><th></th>${th('date', 'Date')}${th('nom', 'Tireur / équipe')}${th('arme', 'Arme')}<th>Compétition</th><th>Lieu</th>${th('niveau', 'Niveau')}${th('place', 'Résultat')}${S.edit ? '<th></th>' : ''}</tr></thead><tbody>`;
+  let h = `<div class="card"><table class="stack"><thead><tr><th></th>${th('date', 'Date')}${th('nom', 'Tireur / équipe')}${th('type', 'Type')}${th('arme', 'Arme')}<th>Compétition</th><th>Lieu</th>${th('niveau', 'Niveau')}${th('place', 'Résultat')}${S.edit ? '<th></th>' : ''}</tr></thead><tbody>`;
   let ly = null;
   rows.forEach(r => {
     if (S.sort.key === 'date' && !S.f.annee) {
@@ -343,8 +343,9 @@ function viewDetail(rows) {
       <td class="main">${avatar(r)}<span class="mobname"></span></td>
       <td data-label="Date">${fmtDate(r.date)}</td>
       <td data-label="Tireur / équipe"><span class="nm">${esc(r.nom)}</span>
-        <span class="tag">${esc(SEXE_PL[r.sexe] ? r.sexe : '')}</span>${r.type === 'equipe' ? '<span class="tag">Équipe</span>' : ''}${r.categorie ? `<span class="tag">${esc(r.categorie)}</span>` : ''}
+        <span class="tag">${esc(SEXE_PL[r.sexe] ? r.sexe : '')}</span>${r.categorie ? `<span class="tag">${esc(r.categorie)}</span>` : ''}
         ${r.membres ? `<span class="mem">${esc(r.membres)}</span>` : ''}</td>
+      <td data-label="Type">${r.type === 'equipe' ? 'Équipe' : 'Individuel'}</td>
       <td data-label="Arme">${esc(r.arme)}</td>
       <td data-label="Compétition">${esc(r.competition)}</td>
       <td data-label="Lieu">${esc(r.lieu)}</td>
