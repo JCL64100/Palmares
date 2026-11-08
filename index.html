@@ -43,6 +43,16 @@ tr.yr td{background:var(--bg);color:var(--bordeaux);font-weight:bold;font-size:1
 .nm{font-weight:bold}
 .tag{display:inline-block;font-size:12px;border-radius:20px;padding:2px 9px;background:var(--bg);color:var(--bordeaux);margin-right:4px}
 .mem{display:block;font-size:12px;color:var(--muted)}
+.hint{margin-top:4px;min-height:0}
+.hint:empty{display:none}
+.hint.ok{color:#2f7a4d}.hint.warn{color:#a15c00}
+.hint button{border:0;background:none;color:var(--bordeaux);font-weight:bold;text-decoration:underline;cursor:pointer;font-size:13px;padding:0}
+.backbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding:10px 14px;background:var(--bg);border-radius:12px}
+.backbar .who{font-size:18px;color:var(--bordeaux);flex:1;min-width:140px}
+.dupg{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.dupg .dr{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:4px 0;font-size:14px}
+#dupBody h3{color:var(--bordeaux);margin:14px 0 6px;font-size:16px}
+#dupBody ul{margin:6px 0 10px;padding-left:20px;font-size:14px}
 .mem .me{background:#f3dbe3;border-radius:4px;padding:0 3px}
 .nm.pn,.pc h3.pn{font-weight:normal}
 .nm.pn b,.pc h3.pn b{font-weight:bold}
@@ -188,6 +198,7 @@ body.ed-open{overflow:hidden}
     <div class="admin">
       <button id="btnBilan" class="btn ghost">📄 Bilan de saison</button>
       <button id="btnFiche" class="btn ghost">📄 Fiche tireur</button>
+      <button id="btnDup" class="btn ghost" hidden>🧹 Doublons</button>
       <button id="btnAdd" class="btn" hidden>+ Ajouter un résultat</button>
       <button id="btnEdit" class="btn ghost">🔒 Mode édition</button>
     </div>
@@ -262,10 +273,10 @@ body.ed-open{overflow:hidden}
       <div class="fg"><label for="mPlace">Place (facultatif)</label><input type="number" id="mPlace" min="1" inputmode="numeric" placeholder="1 = or, 2 = argent…"></div>
     </div>
 
-    <div class="fg"><label for="mComp">Titre de la compétition (facultatif)</label><input id="mComp" placeholder="ex. Championnats de France Maîtres d'Armes"></div>
+    <div class="fg"><label for="mComp">Titre de la compétition (facultatif)</label><input id="mComp" list="dlComp" autocomplete="off" placeholder="ex. Championnats de France Maîtres d'Armes"><datalist id="dlComp"></datalist><div class="small hint" id="hComp"></div></div>
 
     <div class="row2">
-      <div class="fg"><label for="mLieu">Lieu (facultatif)</label><input id="mLieu" placeholder="ex. Toulouse"></div>
+      <div class="fg"><label for="mLieu">Lieu (facultatif)</label><input id="mLieu" list="dlLieu" autocomplete="off" placeholder="ex. Toulouse"><datalist id="dlLieu"></datalist><div class="small hint" id="hLieu"></div></div>
       <div class="fg"><label for="mNiveau">Niveau</label><select id="mNiveau"></select></div>
     </div>
 
@@ -310,6 +321,14 @@ body.ed-open{overflow:hidden}
       </div>
     </div>
     <div id="edPage" class="edpage"></div>
+  </div>
+</div>
+<!-- Contrôle des doublons -->
+<div id="dupModal" class="modal" hidden>
+  <div class="mbox" style="max-width:760px">
+    <h2>🧹 Contrôle des doublons</h2>
+    <div id="dupBody"></div>
+    <div class="acts"><button type="button" id="dupClose" class="btn ghost">Fermer</button></div>
   </div>
 </div>
 <div id="toast"></div>
@@ -362,7 +381,89 @@ function nameParts(s) {
 const fmtName = s => nameParts(s).map(p => p.w).join(' ');
 const nameHtml = s => nameParts(s).map(p => p.nom ? `<b>${esc(p.w)}</b>` : esc(p.w)).join(' ');
 const nameSort = s => { const p = nameParts(s); return p.filter(x => x.nom).concat(p.filter(x => !x.nom)).map(x => x.w).join(' '); };
-const isPerson = k =>String(k).startsWith('individuel|');
+/* Compétitions et lieux : une seule orthographe par intitulé.
+   Deux saisies sont « la même » si elles ne diffèrent que par la casse, les accents, la ponctuation,
+   l'ordre des mots, les petits mots (de, du, la…) ou le pluriel. */
+const STOP = ['de', 'du', 'des', 'la', 'le', 'les', 'd', 'l', 'et', 'a', 'au', 'aux'];
+const ckey = s => norm(s).replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(w => w && !STOP.includes(w))
+  .map(w => w.length > 3 ? w.replace(/s$/, '') : w).sort().join(' ');
+const bigrams = s => { const t = s.replace(/ /g, ''), m = new Map(); for (let i = 0; i < t.length - 1; i++) { const g = t.slice(i, i + 2); m.set(g, (m.get(g) || 0) + 1); } return m; };
+const dice = (a, b) => {   // similarité 0..1 (fautes de frappe)
+  if (!a || !b) return 0;
+  const A = bigrams(a), B = bigrams(b); let inter = 0, tot = 0;
+  A.forEach(v => tot += v); B.forEach(v => tot += v);
+  A.forEach((v, g) => { if (B.has(g)) inter += Math.min(v, B.get(g)); });
+  return tot ? 2 * inter / tot : 0;
+};
+const mixedCase = v => (v !== v.toUpperCase() && v !== v.toLowerCase()) ? 1 : 0;
+const clean = v => String(v || '').trim().replace(/\s+/g, ' ');
+const CF = ['competition', 'lieu'];
+function buildCanon() {
+  S.canon = {};
+  CF.forEach(f => {
+    const g = new Map();
+    S.data.forEach(r => { const v = clean(r[f]), k = ckey(v); if (!k) return; if (!g.has(k)) g.set(k, new Map()); g.get(k).set(v, (g.get(k).get(v) || 0) + 1); });
+    const canon = new Map();
+    g.forEach((m, k) => canon.set(k, [...m.entries()].sort((a, b) => mixedCase(b[0]) - mixedCase(a[0]) || b[1] - a[1] || b[0].length - a[0].length)[0][0]));
+    S.canon[f] = canon;
+  });
+  S.data.forEach(r => CF.forEach(f => {   // affichage unifié ; l'écart avec Firebase est mémorisé (r._fix)
+    const v = clean(r[f]), c = S.canon[f].get(ckey(v));
+    if (c && c !== r[f]) { (r._fix = r._fix || {})[f] = [r[f], c]; r[f] = c; }
+  }));
+  const names = f => [...S.canon[f].values()].sort((a, b) => a.localeCompare(b, 'fr'));
+  $('dlComp').innerHTML = names('competition').map(v => `<option value="${esc(v)}">`).join('');
+  $('dlLieu').innerHTML = names('lieu').map(v => `<option value="${esc(v)}">`).join('');
+}
+function closest(f, v) {   // intitulé connu le plus proche (hors identique)
+  const k = ckey(v); let best = null, sc = 0;
+  S.canon[f].forEach((cv, ck) => { const d = dice(k, ck); if (d > sc) { sc = d; best = cv; } });
+  return sc >= .8 ? best : null;
+}
+function resolveField(f, v) {
+  v = clean(v); if (!v) return '';
+  const c = S.canon[f].get(ckey(v)); if (c) return c;
+  const near = closest(f, v), what = f === 'lieu' ? 'Un lieu' : 'Une compétition';
+  if (near && confirm(`${what} au nom très proche existe déjà :\n\n« ${near} »\n\nOK = utiliser « ${near} »\nAnnuler = garder « ${v} »`)) return near;
+  return v;
+}
+function updHint(f, inId, hId) {
+  const v = clean($(inId).value), h = $(hId);
+  if (!v) { h.className = 'small hint'; h.innerHTML = ''; return; }
+  const c = S.canon[f].get(ckey(v)), what = f === 'lieu' ? 'Lieu déjà connu' : 'Compétition déjà connue';
+  if (c) { h.className = 'small hint ok'; h.innerHTML = c === v ? `✔ ${what}` : `✔ Sera enregistré comme « ${esc(c)} »`; return; }
+  const near = closest(f, v);
+  if (near) { h.className = 'small hint warn'; h.innerHTML = `⚠️ Très proche de « ${esc(near)} » <button type="button" data-use="${esc(near)}">Utiliser</button>`; return; }
+  h.className = 'small hint'; h.innerHTML = '';
+}
+const dupKey = x => [x.type, x.type === 'equipe' ? norm(x.nom) : tkey(x.nom), ckey(x.competition) || ('d:' + x.date), x.saison, x.arme].join('|');
+function dupGroups() {
+  const g = new Map();
+  S.data.forEach(r => { const k = dupKey(r); if (!g.has(k)) g.set(k, []); g.get(k).push(r); });
+  return [...g.values()].filter(x => x.length > 1);
+}
+function dupHtml() {
+  const fixes = S.data.filter(r => r._fix), groups = dupGroups();
+  let h = '<h3>Intitulés à harmoniser</h3>';
+  if (!fixes.length) h += '<p class="small">✅ Aucun : les compétitions et les lieux sont déjà écrits de la même façon partout.</p>';
+  else {
+    const pairs = new Map();
+    fixes.forEach(r => Object.entries(r._fix).forEach(([f, [a, b]]) => pairs.set(f + '|' + a + '|' + b, { f, a, b })));
+    h += `<p class="small">Un même intitulé est écrit de plusieurs façons. À l'écran, c'est déjà unifié ; « Appliquer » met aussi à jour la base (${fixes.length} résultat${fixes.length > 1 ? 's' : ''}).</p><ul>` +
+      [...pairs.values()].map(p => `<li>${p.f === 'lieu' ? 'Lieu' : 'Compétition'} : « ${esc(p.a)} » → <b>« ${esc(p.b)} »</b></li>`).join('') +
+      '</ul><button type="button" class="btn" data-act="applyfix">Appliquer l\'harmonisation</button>';
+  }
+  h += '<h3>Résultats en double</h3>';
+  if (!groups.length) h += '<p class="small">✅ Aucun doublon détecté (même tireur ou équipe, même compétition, même saison, même arme).</p>';
+  else {
+    h += '<p class="small">Gardez une ligne par groupe et supprimez les autres.</p>' + groups.map(g =>
+      `<div class="dupg"><b>${g[0].type === 'equipe' ? esc(g[0].nom) : nameHtml(g[0].nom)}</b> – ${esc(g[0].competition || '(sans titre)')} – ${esc(seasonOf(g[0]))} – ${esc(g[0].arme)}` +
+      g.map(r => `<div class="dr"><span>${r.date ? fmtDate(r.date) : 'sans date'} · ${resLabel(r)}${r.lieu ? ' · ' + esc(r.lieu) : ''}</span><button type="button" class="btn ghost small" data-act="deldup" data-id="${r.id}">🗑️ Supprimer</button></div>`).join('') + '</div>').join('');
+  }
+  return h;
+}
+const dupCount = () => new Set(S.data.filter(r => r._fix).map(r => r.id)).size + dupGroups().length;
+const isPerson = k => String(k).startsWith('individuel|');
 const keysOf = r => r.type === 'equipe' ? [kOf(r), ...(r._m || []).map(m => m.k)] : [kOf(r)];   // équipe + chacun de ses membres
 const hasKey = (r, k) => keysOf(r).includes(k);
 
@@ -425,8 +526,10 @@ async function load() {
     $('view').innerHTML = '<div class="empty">⚠️ Impossible de charger les résultats. Vérifiez la connexion puis rechargez la page.</div>';
     return;
   }
+  buildCanon();
   buildPersons();
   buildFilters();
+  if (!$('dupModal').hidden) $('dupBody').innerHTML = dupHtml();
   render();
 }
 
@@ -489,9 +592,16 @@ function render() {
     `<div class="kpi"><b>${m.b}</b><span>🥉 Bronze</span></div>`;
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
   $('btnAdd').hidden = !S.edit;
+  $('btnDup').hidden = !S.edit;
+  const nd = S.edit ? dupCount() : 0;
+  $('btnDup').textContent = '🧹 Doublons' + (nd ? ' (' + nd + ')' : '');
   $('btnEdit').textContent = S.edit ? '🔓 Quitter l\'édition' : '🔒 Mode édition';
-  if (!rows.length) { $('view').innerHTML = '<div class="empty">Aucun résultat pour cette sélection.</div>'; return; }
-  if (S.tab === 'detail') $('view').innerHTML = viewDetail(rows);
+  // fiche d'un tireur / d'une équipe : retour vers la mosaïque
+  const sj = S.f.sujet && S.subj ? S.subj.find(s => s[0] === S.f.sujet) : null;
+  const bar = (S.tab === 'detail' && sj)
+    ? `<div class="backbar"><button class="btn ghost small" data-act="back">← Tous les tireurs / équipes</button><span class="who serif">${sj[1][1] ? esc(sj[1][0]) : nameHtml(sj[1][0])}</span><button class="btn ghost small" data-act="fiche" data-key="${esc(S.f.sujet)}">📄 Fiche</button></div>` : '';
+  if (!rows.length) { $('view').innerHTML = bar + '<div class="empty">Aucun résultat pour cette sélection.</div>'; return; }
+  if (S.tab === 'detail') $('view').innerHTML = bar + viewDetail(rows);
   else if (S.tab === 'tireurs') $('view').innerHTML = viewTireurs(rows);
   else $('view').innerHTML = viewClub(rows);
 }
@@ -627,6 +737,7 @@ function openForm(id) {
   $('mFile').value = '';
   $('mFileMsg').textContent = "Si aucune photo n'est ajoutée, la photo déjà enregistrée pour ce nom est reprise.";
   setPhoto(r ? r.photo : '');
+  updHint('competition', 'mComp', 'hComp'); updHint('lieu', 'mLieu', 'hLieu');
   $('modal').hidden = false;
 }
 function resize(file, max) {
@@ -858,6 +969,8 @@ $('view').addEventListener('click', async e => {
   const a = e.target.closest('[data-act]'); if (!a) return;
   if (a.dataset.act === 'focus') {
     S.f.sujet = a.dataset.key; $('fSujet').value = S.f.sujet; S.tab = 'detail'; render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else if (a.dataset.act === 'back') {
+    S.f.sujet = ''; $('fSujet').value = ''; S.tab = 'tireurs'; render(); window.scrollTo({ top: 0, behavior: 'smooth' });
   } else if (a.dataset.act === 'fiche') openEdition('fiche', a.dataset.key);
   else if (a.dataset.act === 'edit') openForm(a.dataset.id);
   else if (a.dataset.act === 'del') {
@@ -874,6 +987,25 @@ $('btnEdit').addEventListener('click', () => {
   else toast('Code incorrect');
 });
 $('btnAdd').addEventListener('click', () => openForm());
+$('btnDup').addEventListener('click', () => { $('dupBody').innerHTML = dupHtml(); $('dupModal').hidden = false; });
+$('dupClose').addEventListener('click', () => $('dupModal').hidden = true);
+$('dupBody').addEventListener('click', async e => {
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  try {
+    if (a.dataset.act === 'applyfix') {
+      const fixes = S.data.filter(r => r._fix);
+      await Promise.all(fixes.map(r => fb('PATCH', '/' + r.id, Object.fromEntries(Object.entries(r._fix).map(([f, [x, y]]) => [f, y])))));
+      toast('✅ Intitulés harmonisés'); await load();
+    } else if (a.dataset.act === 'deldup') {
+      if (!confirm('Supprimer définitivement ce résultat ?')) return;
+      await fb('DELETE', '/' + a.dataset.id); toast('Résultat supprimé'); await load();
+    }
+  } catch (err) { toast('⚠️ Opération impossible, réessayez'); }
+});
+[['competition', 'mComp', 'hComp'], ['lieu', 'mLieu', 'hLieu']].forEach(([f, i, h]) => {
+  $(i).addEventListener('input', () => updHint(f, i, h));
+  $(h).addEventListener('click', e => { const b = e.target.closest('[data-use]'); if (b) { $(i).value = b.dataset.use; updHint(f, i, h); } });
+});
 $('btnBilan').addEventListener('click', () => openEdition('bilan'));
 $('btnFiche').addEventListener('click', () => openEdition('fiche', S.f.sujet || ''));
 ['edMode', 'edSeason', 'edArme', 'edSubj'].forEach(id => $(id).addEventListener('change', () => {
@@ -910,13 +1042,15 @@ $('form').addEventListener('submit', async e => {
   commitMemInput();
   const r = {
     type, nom: type === 'equipe' ? $('mNom').value.trim() : fmtName($('mNom').value), sexe: $('mSexe').value, arme: $('mArme').value,
-    date: $('mDate').value, lieu: $('mLieu').value.trim(), competition: $('mComp').value.trim(),
+    date: $('mDate').value, lieu: resolveField('lieu', $('mLieu').value), competition: resolveField('competition', $('mComp').value),
     niveau: $('mNiveau').value, place: parseInt($('mPlace').value, 10) || '',
     resultat: $('mRes').value.trim(), saison: $('mSaison').value.trim(),
     categorie: $('mCat').value.trim(), membres: type === 'equipe' ? S.mem.join(', ') : '',
     photo: S.photo
   };
   if (!r.photo) r.photo = photoFor(kOf(r)) || '';
+  const twin = S.data.find(x => x.id !== S.editId && dupKey(x) === dupKey(r));   // même sujet, compétition, saison, arme
+  if (twin && !confirm(`Ce résultat semble déjà enregistré :\n\n${twin.nom} –${twin.competition || '(sans titre)'} – ${seasonOf(twin)}${twin.place ? ' – ' + twin.place + 'e' : ''}\n\nL'enregistrer quand même ?`)) return;
   $('mSave').disabled = true;
   try {
     if (S.editId) await fb('PUT', '/' + S.editId, r); else await fb('POST', '', r);
