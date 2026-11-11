@@ -124,7 +124,7 @@ tfoot td{font-weight:bold;background:var(--bg)}
 .perf .who b{font-weight:700}
 .perf em{font:11px Arial;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-left:10px;font-style:normal;white-space:nowrap}
 .perf .det{font-size:12.5px;color:#666;margin-top:3px}
-.perf .res{text-align:right;font:600 19px 'Playfair Display',Georgia,serif;color:var(--bordeaux);white-space:nowrap}
+.perf .res{text-align:right;max-width:240px;font:600 17px 'Playfair Display',Georgia,serif;color:var(--bordeaux)}
 .perf .res small{display:block;font:10.5px Arial;letter-spacing:.12em;text-transform:uppercase;color:#888;margin-top:2px}
 .et{width:100%;border-collapse:collapse;font-size:13.5px}
 .et th{background:none;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;font-size:10.5px;text-align:left;padding:6px 8px;border-bottom:1px solid var(--gold)}
@@ -436,7 +436,7 @@ function updHint(f, inId, hId) {
   if (near) { h.className = 'small hint warn'; h.innerHTML = `⚠️ Très proche de « ${esc(near)} » <button type="button" data-use="${esc(near)}">Utiliser</button>`; return; }
   h.className = 'small hint'; h.innerHTML = '';
 }
-const dupKey = x => [x.type, x.type === 'equipe' ? norm(x.nom) : tkey(x.nom), ckey(x.competition) || ('d:' + x.date), x.saison, x.arme].join('|');
+const dupKey = x => [x.type, x.type === 'equipe' ? norm(x.nom) : tkey(x.nom), ckey(x.competition) || ('d:' + x.date), x.saison, x.arme, norm(x.categorie)].join('|');
 function dupGroups() {
   const g = new Map();
   S.data.forEach(r => { const k = dupKey(r); if (!g.has(k)) g.set(k, []); g.get(k).push(r); });
