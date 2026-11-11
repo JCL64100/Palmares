@@ -39,6 +39,8 @@ th.s{cursor:pointer}
 th.s:hover{background:var(--rose)}
 td{padding:8px 10px;border-bottom:1px solid var(--line);font-size:15px;vertical-align:middle}
 tr.yr td{background:var(--bg);color:var(--bordeaux);font-weight:bold;font-size:17px}
+.comp{break-inside:avoid;margin-bottom:6px}
+.logo{object-fit:contain!important;padding:4px;background:#fff!important;border:1px solid var(--line)}
 .av{width:44px;height:44px;border-radius:50%;object-fit:cover;background:var(--bg);display:inline-flex;align-items:center;justify-content:center;color:var(--bordeaux);font-weight:bold;font-size:15px}
 .nm{font-weight:bold}
 .tag{display:inline-block;font-size:12px;border-radius:20px;padding:2px 9px;background:var(--bg);color:var(--bordeaux);margin-right:4px}
@@ -197,6 +199,8 @@ body.ed-open{overflow:hidden}
     </div>
     <div class="admin">
       <button id="btnBilan" class="btn ghost">📄 Bilan de saison</button>
+      <button id="btnClub" class="btn ghost">📄 Bilan du club</button>
+      <button id="btnComp" class="btn ghost">📄 Récap compétitions</button>
       <button id="btnFiche" class="btn ghost">📄 Fiche tireur</button>
       <button id="btnDup" class="btn ghost" hidden>🧹 Doublons</button>
       <button id="btnAdd" class="btn" hidden>+ Ajouter un résultat</button>
@@ -310,9 +314,9 @@ body.ed-open{overflow:hidden}
   <div class="edbox">
     <div class="edbar">
       <div><label for="edMode">Édition</label>
-        <select id="edMode"><option value="bilan">Bilan de saison</option><option value="fiche">Fiche tireur / équipe</option></select></div>
-      <div class="g-bilan"><label for="edSeason">Saison</label><select id="edSeason"></select></div>
-      <div class="g-bilan"><label for="edArme">Arme</label>
+        <select id="edMode"><option value="bilan">Bilan de saison</option><option value="club">Bilan du club (3 saisons)</option><option value="comp">Récap annuel par compétition</option><option value="fiche">Fiche tireur / équipe</option></select></div>
+      <div class="g-seas"><label for="edSeason">Saison</label><select id="edSeason"></select></div>
+      <div class="g-arme"><label for="edArme">Arme</label>
         <select id="edArme"><option value="">Épée et sabre</option><option>Épée</option><option>Sabre</option></select></div>
       <div class="g-fiche"><label for="edSubj">Tireur / équipe</label><select id="edSubj"></select></div>
       <div class="edbtn">
@@ -502,11 +506,18 @@ function photoFor(key) {
   const rows = S.data.filter(r => kOf(r) === key && r.photo).sort((a, b) => b.date.localeCompare(a.date));
   return rows.length ? rows[0].photo : '';
 }
-function avatar(r, cls = 'av', size = 44) {
-  const p = photoFor(kOf(r));
-  return p ? `<img class="${cls}" src="${esc(thumb(p, size * 2, size * 2))}" alt="${esc(r.nom)}" loading="lazy">`
-           : `<span class="${cls}">${esc(initials(r.nom))}</span>`;
+/* photo affichée : sa propre photo, sinon (tireur sans photo) celle d'une de ses équipes, sinon le logo du club */
+function photoAny(key) {
+  const own = photoFor(key); if (own || !isPerson(key)) return own;
+  const t = S.data.filter(r => r.type === 'equipe' && r.photo && hasKey(r, key)).sort((a, b) => b.date.localeCompare(a.date));
+  return t.length ? t[0].photo : '';
 }
+function picImg(key, cls, size, alt, extra = '') {
+  const p = photoAny(key);
+  return p ? `<img class="${cls}"${extra} src="${esc(thumb(p, size * 2, size * 2))}" alt="${esc(alt)}" loading="lazy">`
+           : `<img class="${cls} logo"${extra} src="${IMG_LOGO}" alt="BO Escrime">`;
+}
+function avatar(r, cls = 'av', size = 44) { return picImg(kOf(r), cls, size, r.nom); }
 
 /* ---------- Firebase (REST) ---------- */
 async function fb(method, path = '', body) {
@@ -655,8 +666,8 @@ function viewTireurs(rows) {
     return { k, rs, m, best, last, person, name, sexe: person ? (own ? own.sexe : '') : last.sexe, nTeam };
   }).sort((a, b) => b.m.g - a.m.g || b.m.s - a.m.s || b.m.b - a.m.b || b.rs.length - a.rs.length || a.name.localeCompare(b.name, 'fr'));
   return '<div class="grid">' + list.map(x => {
-    const r = x.last, p = photoFor(x.k);
-    const img = p ? `<img class="big" style="display:block" src="${esc(thumb(p, 220, 220))}" alt="${esc(x.name)}" loading="lazy">` : `<div class="big">${esc(initials(x.name))}</div>`;
+    const r = x.last;
+    const img = picImg(x.k, 'big', 110, x.name, ' style="display:block"');
     const mem = !x.person && r._m && r._m.length ? `<div class="small">👥 ${r._m.map(m => nameHtml(m.n)).join(' · ')}</div>` : '';
     return `<div class="card pc" data-act="focus" data-key="${esc(x.k)}">
       ${img}<h3${x.person ? ' class="pn"' : ''}>${x.person ? nameHtml(x.name) : esc(x.name)}</h3>
@@ -844,6 +855,74 @@ function bilanHtml(saison, arme) {
   return h + edFoot();
 }
 
+function compHtml(saison, arme) {
+  const sel = S.data.filter(r => seasonOf(r) === saison && (!arme || r.arme === arme));
+  const armeTxt = arme ? arme : 'Épée et sabre';
+  let h = edHead('Récapitulatif annuel par compétition') + `<div class="ed-head"><h1 class="ed-title">${esc(saison)}</h1><p class="ed-sub">${esc(armeTxt)}</p></div>`;
+  if (!sel.length) return h + '<div class="empty">Aucun résultat pour cette saison.</div>' + edFoot();
+  const g = new Map();   // une compétition = intitulé (unifié) + date
+  sel.forEach(r => { const k = (ckey(r.competition) || 'x') + '|' + (r.date || ''); if (!g.has(k)) g.set(k, []); g.get(k).push(r); });
+  const comps = [...g.values()].map(rs => ({ rs, r0: rs[0], st: stat(rs) })).sort((a, b) => (a.r0.date || '').localeCompare(b.r0.date || ''));
+  const t = stat(sel);
+  h += `<div class="ek"><div><b>${comps.length}</b><span class="l">Compétitions</span></div><div><b>${t.n}</b><span class="l">Résultats</span></div><div><b>${t.med}</b><span class="l">Médailles</span><span class="sm">🥇 ${t.g} · 🥈 ${t.s} · 🥉 ${t.b}</span></div><div><b>${t.top8}</b><span class="l">Top 8</span></div><div><b>${t.persons}</b><span class="l">Tireurs engagés</span></div></div>`;
+  comps.forEach(c => {
+    const r0 = c.r0, rs = c.rs.slice().sort((a, b) => (+a.place || 999) - (+b.place || 999) || nameSort(a.nom).localeCompare(nameSort(b.nom), 'fr'));
+    h += `<div class="comp"><h2>${esc(r0.competition || 'Compétition')}</h2>
+      <div class="det">${[r0.lieu, r0.date ? fmtDate(r0.date) : '', r0.niveau].filter(Boolean).map(esc).join(' · ')} · ${c.st.n} résultat${c.st.n > 1 ? 's' : ''}${c.st.med ? ` · 🥇 ${c.st.g} 🥈 ${c.st.s} 🥉 ${c.st.b}` : ''}</div>
+      <table class="et"><tbody>` + rs.map(r => `<tr><td style="width:96px"><b>${resLabel(r)}</b></td><td>${whoHtml(r)}${r.categorie ? ` <span class="note" style="margin:0">· ${esc(r.categorie)}</span>` : ''}${arme ? '' : ` <span class="note" style="margin:0">· ${esc(r.arme)}</span>`}${r.type === 'equipe' && r._m && r._m.length ? `<div class="note" style="margin:2px 0 0">👥 ${r._m.map(m => nameHtml(m.n)).join(' · ')}</div>` : ''}</td></tr>`).join('') + '</tbody></table></div>';
+  });
+  h += '<p class="note">Compétitions classées par date. Les résultats par équipe sont comptés une fois et rattachés à leurs membres.</p>';
+  return h + edFoot();
+}
+
+function clubHtml(arme) {
+  const all = S.data.filter(r => !arme || r.arme === arme);
+  const seasons = [...new Set(all.map(seasonOf))].filter(y => /^\d{4}\/\d{4}$/.test(y)).sort().slice(-3);
+  const armeTxt = arme ? arme : 'Épée et sabre';
+  let h = edHead('Bilan du club');
+  if (!seasons.length) return h + '<div class="empty">Aucun résultat.</div>' + edFoot();
+  const list = seasons.map(sn => { const rs = all.filter(r => seasonOf(r) === sn), st = stat(rs); return { season: sn, rs, st, score: st.score }; });
+  const first = list[0], last = list[list.length - 1];
+  h += `<div class="ed-head"><h1 class="ed-title">${esc(first.season)}${list.length > 1 ? ' – ' + esc(last.season) : ''}</h1><p class="ed-sub">${esc(armeTxt)} · ${list.length} saison${list.length > 1 ? 's' : ''}</p></div>`;
+
+  const ind = [['Résultats', 'n'], ['Titres', 'g'], ['Médailles', 'med'], ['Top 8', 'top8'], ['Tireurs engagés', 'persons'], ['Meilleur indice', 'score']];
+  h += '<h2>Les chiffres clés</h2><table class="et"><thead><tr><th>Indicateur</th>' + list.map(x => `<th class="c">${esc(x.season)}</th>`).join('') + '</tr></thead><tbody>' +
+    ind.map(([l, k]) => `<tr><td>${l}</td>` + list.map((x, i) => `<td class="c"><b>${x.st[k]}</b>${i ? '<br>' + dlt(x.st[k], list[i - 1].st[k], true) : ''}</td>`).join('') + '</tr>').join('') +
+    '<tr><td>Détail des médailles</td>' + list.map(x => `<td class="c">🥇 ${x.st.g} · 🥈 ${x.st.s} · 🥉 ${x.st.b}</td>`).join('') + '</tr></tbody></table>';
+  if (list.length > 1) h += `<p class="note" style="text-align:center">De ${esc(first.season)} à ${esc(last.season)} : médailles ${first.st.med} → ${last.st.med} · titres ${first.st.g} → ${last.st.g} · tireurs engagés ${first.st.persons} → ${last.st.persons}.</p>`;
+  if (seasonFromDate(new Date().toISOString().slice(0, 10)) === last.season) h += `<p class="note" style="text-align:center">La saison ${esc(last.season)} est en cours : ses chiffres sont provisoires.</p>`;
+
+  h += '<h2>Évolution</h2>' + chartSaisons(list);
+
+  const rowsT = [];
+  NIVEAUX.slice().reverse().forEach(n => { const c = list.map(x => stat(x.rs.filter(r => r.niveau === n))); if (c.some(t => t.n)) rowsT.push([n, c]); });
+  if (!arme) ['Épée', 'Sabre'].forEach(a => { const c = list.map(x => stat(x.rs.filter(r => r.arme === a))); if (c.some(t => t.n)) rowsT.push(['<i>' + a + '</i>', c, 1]); });
+  h += '<h2>Répartition par niveau et par arme</h2><table class="et"><thead><tr><th></th>' + list.map(x => `<th class="c">${esc(x.season)}</th>`).join('') + '</tr></thead><tbody>' +
+    rowsT.map(([l, c]) => `<tr><td>${l}</td>` + c.map(t => `<td class="c">${t.n} résultat${t.n > 1 ? 's' : ''}<br><b>${t.med}</b> médaille${t.med > 1 ? 's' : ''}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
+
+  h += '<h2>Les temps forts de chaque saison</h2>';
+  list.slice().reverse().forEach(x => {
+    const top = x.rs.filter(r => perfScore(r) > 0).sort(byPerf).slice(0, 3);
+    if (!top.length) return;
+    h += `<div class="note" style="margin:10px 0 2px"><b>${esc(x.season)}</b></div>`;
+    top.forEach((r, i) => {
+      h += `<div class="perf${i === 0 ? ' first' : ''}"><div class="rk">${i + 1}</div>
+        <div class="pm">${whoHtml(r)}<div class="det">${detLine(r)}</div>${memLine(r)}</div>
+        <div class="res">${resLabel(r)}<small>${esc(r.niveau)}</small></div></div>`;
+    });
+  });
+
+  const hon = new Map();
+  list.forEach(x => x.rs.filter(r => +r.place >= 1 && +r.place <= 3).forEach(r => keysOf(r).filter(isPerson).forEach(k => {
+    const o = hon.get(k) || { g: 0, s: 0, b: 0 }; if (+r.place === 1) o.g++; else if (+r.place === 2) o.s++; else o.b++; hon.set(k, o);
+  })));
+  const hl = [...hon.entries()].sort((a, b) => (b[1].g * 3 + b[1].s * 2 + b[1].b) - (a[1].g * 3 + a[1].s * 2 + a[1].b) || nameSort(S.persons.get(a[0])).localeCompare(nameSort(S.persons.get(b[0])), 'fr')).slice(0, 10);
+  if (hl.length) h += '<h2>Les plus titrés sur la période</h2><div class="hon">' + hl.map(([k, o]) =>
+    `<div><span>${nameHtml(S.persons.get(k))}</span><span>${o.g ? '🥇 ' + o.g + ' ' : ''}${o.s ? '🥈 ' + o.s + ' ' : ''}${o.b ? '🥉 ' + o.b : ''}</span></div>`).join('') + '</div>';
+  h += '<p class="note">Les résultats par équipe sont comptés une fois dans les totaux du club et attribués à chacun de leurs membres. L\'indice combine le classement obtenu et le niveau de la compétition (courbe : meilleur indice de la saison).</p>';
+  return h + edFoot();
+}
+
 function chartSaisons(list) {
   const W = 640, H = 240, L = 34, R = 20, T = 26, B = 40, pw = W - L - R, ph = H - T - B;
   const n = list.length, step = pw / n, bw = Math.min(56, step * .55);
@@ -873,8 +952,7 @@ function ficheHtml(key) {
   let h = edHead('Fiche palmarès');
   if (!rows.length) return h + '<div class="empty">Aucun résultat pour cette sélection.</div>' + edFoot();
 
-  const ph = photoFor(key);
-  const photo = ph ? `<img class="ph" src="${esc(thumb(ph, 220, 220))}" alt="">` : `<div class="ph">${esc(initials(name))}</div>`;
+  const photo = picImg(key, 'ph', 96, name);
   const armes = [...new Set(rows.map(r => r.arme))].join(' · ');
   const cat = [...rows].reverse().map(r => r.categorie).find(Boolean) || '';
   const sexe = person ? (own ? own.sexe : '') : (lastR.sexe || '');
@@ -927,9 +1005,10 @@ function ficheHtml(key) {
 
 function renderEdition() {
   const e = S.ed;
-  document.querySelectorAll('.g-bilan').forEach(x => x.hidden = e.mode !== 'bilan');
+  document.querySelectorAll('.g-seas').forEach(x => x.hidden = e.mode !== 'bilan' && e.mode !== 'comp');
+  document.querySelectorAll('.g-arme').forEach(x => x.hidden = e.mode === 'fiche');
   document.querySelectorAll('.g-fiche').forEach(x => x.hidden = e.mode !== 'fiche');
-  $('edPage').innerHTML = e.mode === 'bilan' ? bilanHtml(e.season, e.arme) : ficheHtml(e.key);
+  $('edPage').innerHTML = e.mode === 'bilan' ? bilanHtml(e.season, e.arme) : e.mode === 'club' ? clubHtml(e.arme) : e.mode === 'comp' ? compHtml(e.season, e.arme) : ficheHtml(e.key);
   $('edPage').parentElement.scrollTop = 0;
 }
 function openEdition(mode, key) {
@@ -1007,6 +1086,8 @@ $('dupBody').addEventListener('click', async e => {
   $(h).addEventListener('click', e => { const b = e.target.closest('[data-use]'); if (b) { $(i).value = b.dataset.use; updHint(f, i, h); } });
 });
 $('btnBilan').addEventListener('click', () => openEdition('bilan'));
+$('btnClub').addEventListener('click', () => openEdition('club'));
+$('btnComp').addEventListener('click', () => openEdition('comp'));
 $('btnFiche').addEventListener('click', () => openEdition('fiche', S.f.sujet || ''));
 ['edMode', 'edSeason', 'edArme', 'edSubj'].forEach(id => $(id).addEventListener('change', () => {
   S.ed = { mode: $('edMode').value, season: $('edSeason').value, arme: $('edArme').value, key: $('edSubj').value }; renderEdition();
